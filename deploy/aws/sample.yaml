@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Sample ECS App
+
+Parameters: {}
+
+Resources:
+  # for docker image to live in
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: sample
+
+  SampleVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  SampleSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      VpcId: !Ref SampleVpc
+
+  SampleRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref SampleVpc
+
+  SampleRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref SampleGateway
+      RouteTableId: !Ref SampleRouteTable
+
+  SampleGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref SampleVpc
+      InternetGatewayId: !Ref SampleGateway
+
+  # define the docker task and its attendant containers
+  SampleTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+      - Image: !Sub ${AWS::AccountId}.dkr.ecr.us-east-1.amazonaws.com/sample:latest
+        Memory: 128
+        Name: sample
+      Cpu: 256
+      ExecutionRoleArn: !Ref SampleExecutionRole
+      Memory: 0.5GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+
+  # allow our service to pull images from ECR
+  SampleExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - ecs.amazonaws.com
+              - ecs-tasks.amazonaws.com
+            Action:
+            - sts:AssumeRole
+
+  SampleService:
+    Type: AWS::ECS::Service
+    Properties:
+      DesiredCount: 1
+      LaunchType: FARGATE
+      # LoadBalancers:
+      #   - Load Balancer Objects, ...
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+          - !Ref SampleSubnet1
+      # Role: String
+      ServiceName: sample
+      TaskDefinition: !Ref SampleTask #refers to TaskDefinition below, intrinsic function
+
+Outputs: {}
